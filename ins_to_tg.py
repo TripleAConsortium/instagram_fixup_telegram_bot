@@ -6,6 +6,7 @@ import telebot
 from urllib.parse import urlparse
 import json
 from dotenv import load_dotenv
+from typing import List, Dict, Optional, Union
 
 # Load configuration from .env file
 load_dotenv()
@@ -18,7 +19,7 @@ UGUU_API_URL = 'https://uguu.se/upload'
 # Initialize the bot
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
-def get_reel_info(reel_url):
+def get_instagram_info(post_url: str) -> Optional[Dict]:
     headers = {
         'Content-Type': 'text/plain;charset=UTF-8',
         'Accept': 'text/x-component',
@@ -35,13 +36,13 @@ def get_reel_info(reel_url):
         'Next-Action': 'ab9bd115bb96cb5d8aab870a379d201c07d3b005',
     }
 
-    payload = [{"url": reel_url}]
+    payload = [{"url": post_url}]
 
     try:
         response = requests.post(INSTAGRAM_API_URL, headers=headers, json=payload)
         response.raise_for_status()
 
-        # Parse the response to get reel information
+        # Parse the response to get post information
         response_text = response.content.decode('utf-8')
         parts = response_text.split('\n')
         if len(parts) >= 2:
@@ -52,37 +53,48 @@ def get_reel_info(reel_url):
                     # Extract user and content information
                     user_display_name = json_data.get('data', {}).get('user', {}).get('displayName', '')
                     content_title = json_data.get('data', {}).get('content', {}).get('title', '')
+                    content_description = json_data.get('data', {}).get('content', {}).get('description', '')
 
-                    # Choose text for the link (title or displayName)
-                    link_text = content_title if content_title else user_display_name
+                    # Choose text for the link (title, description, or displayName)
+                    link_text = content_title or content_description or user_display_name
 
-                    # Get the video URL
+                    # Get all media (photos/videos)
                     media = json_data.get('data', {}).get('content', {}).get('media', [])
-                    if media and len(media) > 0:
-                        video_url = media[0].get('source', {}).get('url')
-                        if video_url:
-                            return {
-                                'video_url': video_url,
-                                'link_text': link_text,
-                                'filename': os.path.basename(urlparse(reel_url).path) + '.mp4'
-                            }
+                    media_urls = []
+
+                    for item in media:
+                        if item.get('type') in ['photo', 'video']:
+                            media_url = item.get('source', {}).get('url')
+                            if media_url:
+                                media_urls.append({
+                                    'url': media_url,
+                                    'type': item['type'],
+                                    'filename': f"{os.path.basename(urlparse(post_url).path)}_{len(media_urls)}.{'mp4' if item['type'] == 'video' else 'jpg'}"
+                                })
+
+                    if media_urls:
+                        return {
+                            'media': media_urls,
+                            'link_text': link_text,
+                            'description': content_description
+                        }
         return None
     except Exception as e:
         return str(e)
 
-def download_video(video_url, filename):
+def download_media(media_url: str, filename: str) -> Union[bool, str]:
     try:
-        video_response = requests.get(video_url, stream=True)
-        video_response.raise_for_status()
+        response = requests.get(media_url, stream=True)
+        response.raise_for_status()
 
         with open(filename, 'wb') as f:
-            for chunk in video_response.iter_content(chunk_size=8192):
+            for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
         return True
     except Exception as e:
         return str(e)
 
-def upload_to_uguu(filename):
+def upload_to_uguu(filename: str) -> str:
     try:
         with open(filename, 'rb') as f:
             response = requests.post(UGUU_API_URL, files={'files[]': f})
@@ -96,44 +108,66 @@ def upload_to_uguu(filename):
     except Exception as e:
         return str(e)
 
-@bot.message_handler(regexp=r'https?://(www\.)?instagram\.com/reel/')
-def handle_reel(message):
+def process_instagram_post(message, post_url: str):
     try:
-        reel_url = message.text
         chat_id = message.chat.id
 
         # Remove typing notification
-        bot.send_chat_action(chat_id, 'upload_video')
+        bot.send_chat_action(chat_id, 'upload_photo')
 
-        # Get information about the reel
-        reel_info = get_reel_info(reel_url)
-        if not reel_info or isinstance(reel_info, str):
+        # Get post information
+        post_info = get_instagram_info(post_url)
+        if not post_info or isinstance(post_info, str):
             bot.set_message_reaction(chat_id, message.id, reaction=[telebot.types.ReactionTypeEmoji("💔")])
             return
 
-        # Download the video
-        download_result = download_video(reel_info['video_url'], reel_info['filename'])
-        if isinstance(download_result, str) or not download_result:
-            error_msg = f"Failed to download video: {download_result if isinstance(download_result, str) else 'unknown error'}"
-            bot.reply_to(message, error_msg, disable_notification=True)
-            return
+        # Download all media
+        downloaded_files = []
+        for media_item in post_info['media']:
+            download_result = download_media(media_item['url'], media_item['filename'])
+            if isinstance(download_result, str) or not download_result:
+                error_msg = f"Failed to download media: {download_result if isinstance(download_result, str) else 'unknown error'}"
+                bot.reply_to(message, error_msg, disable_notification=True)
+                return
+            downloaded_files.append(media_item)
 
-        # Upload to uguu.se
-        direct_link = upload_to_uguu(reel_info['filename'])
+        # Upload to uguu.se and collect links
+        media_group = []
+        for media_item in downloaded_files:
+            direct_link = upload_to_uguu(media_item['filename'])
+            if not direct_link.startswith('http'):
+                bot.reply_to(message, f"Upload error on uguu.se: {direct_link}", disable_notification=True)
+                return
 
-        # Remove temporary file
-        if os.path.exists(reel_info['filename']):
-            os.remove(reel_info['filename'])
+            if media_item['type'] == 'photo':
+                media_group.append(telebot.types.InputMediaPhoto(direct_link))
+            else:  # video
+                media_group.append(telebot.types.InputMediaVideo(direct_link))
 
-        if direct_link.startswith('http'):
-            # Format text with hyperlink
-            link_text = reel_info['link_text'] or 'Watch video'
-            reply_text = f'<a href="{direct_link}">{link_text}</a>'
-            bot.reply_to(message, reply_text, parse_mode='HTML', disable_notification=True)
-        else:
-            bot.reply_to(message, f"Error uploading to uguu.se: {direct_link}", disable_notification=True)
+        # Delete temporary files
+        for media_item in downloaded_files:
+            if os.path.exists(media_item['filename']):
+                os.remove(media_item['filename'])
+
+        # Send media group with reply
+        if len(media_group) > 0:
+            # Add caption to the first media
+            if post_info.get('description'):
+                media_group[0].caption = post_info['description']
+
+            bot.send_media_group(
+                chat_id=chat_id,
+                media=media_group,
+                reply_to_message_id=message.message_id  # Reply to the original message
+            )
+
     except Exception as e:
         bot.reply_to(message, f"An error occurred: {str(e)}", disable_notification=True)
+
+@bot.message_handler(regexp=r'https?://(www\.)?instagram\.com/(reel|p)/')
+def handle_instagram_post(message):
+    post_url = message.text
+    process_instagram_post(message, post_url)
 
 if __name__ == '__main__':
     if not TELEGRAM_BOT_TOKEN:
