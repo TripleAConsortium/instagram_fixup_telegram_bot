@@ -113,4 +113,34 @@ def handle_reel(message):
             return
 
         # Download the video
-        download_result = download_video(reel_info['
+        download_result = download_video(reel_info['video_url'], reel_info['filename'])
+        if isinstance(download_result, str) or not download_result:
+            error_msg = f"Failed to download video: {download_result if isinstance(download_result, str) else 'unknown error'}"
+            bot.reply_to(message, error_msg, disable_notification=True)
+            return
+
+        # Upload to uguu.se
+        direct_link = upload_to_uguu(reel_info['filename'])
+
+        # Remove temporary file
+        if os.path.exists(reel_info['filename']):
+            os.remove(reel_info['filename'])
+
+        if direct_link.startswith('http'):
+            # Format text with hyperlink
+            link_text = reel_info['link_text'] or 'Watch video'
+            reply_text = f'<a href="{direct_link}">{link_text}</a>'
+            bot.reply_to(message, reply_text, parse_mode='HTML', disable_notification=True)
+        else:
+            bot.reply_to(message, f"Error uploading to uguu.se: {direct_link}", disable_notification=True)
+    except Exception as e:
+        bot.reply_to(message, f"An error occurred: {str(e)}", disable_notification=True)
+
+if __name__ == '__main__':
+    if not TELEGRAM_BOT_TOKEN:
+        print("Error: TELEGRAM_BOT_TOKEN not found in .env file")
+        exit(1)
+
+    print("Bot running...")
+    bot.infinity_polling()
+
