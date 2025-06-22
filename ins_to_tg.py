@@ -15,6 +15,7 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 INSTAGRAM_API_URL = 'https://instagram.embedez.com/'
 UGUU_API_URL = 'https://uguu.se/upload'
+DELETE_ORIGINAL_MESSAGE = os.getenv('DELETE_ORIGINAL_MESSAGE', 'false').lower() == 'true'
 
 # Initialize the bot
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -161,6 +162,13 @@ def process_instagram_post(message, post_url: str):
                 reply_to_message_id=message.message_id  # Reply to the original message
             )
 
+            # Delete original message if configured to do so
+            if DELETE_ORIGINAL_MESSAGE:
+                try:
+                    bot.delete_message(chat_id, message.message_id)
+                except Exception as e:
+                    print(f"Could not delete message: {e}")
+
     except Exception as e:
         bot.reply_to(message, f"An error occurred: {str(e)}", disable_notification=True)
 
@@ -175,5 +183,5 @@ if __name__ == '__main__':
         exit(1)
 
     print("Bot running...")
+    print(f"DELETE_ORIGINAL_MESSAGE is set to: {DELETE_ORIGINAL_MESSAGE}")
     bot.infinity_polling()
-
