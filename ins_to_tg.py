@@ -108,8 +108,7 @@ def handle_reel(message):
         # Get information about the reel
         reel_info = get_reel_info(reel_url)
         if not reel_info or isinstance(reel_info, str):
-            error_msg = f"Failed to get information about the reel: {reel_info if isinstance(reel_info, str) else 'unknown error'}"
-            bot.reply_to(message, error_msg, disable_notification=True)
+            bot.set_message_reaction(chat_id, message.id, reaction=[telebot.types.ReactionTypeEmoji("💔")])
             return
 
         # Download the video
