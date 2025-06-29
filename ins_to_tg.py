@@ -150,11 +150,17 @@ def process_instagram_post(message, post_url: str):
             if os.path.exists(media_item['filename']):
                 os.remove(media_item['filename'])
 
+        caption = ""
+        if post_info.get('description'):
+            first_line = post_info['description'].split('\n')[0]
+            caption = f"{first_line}\n\n[Fixedup]({post_url})"
+
         # Send media group with reply
         if len(media_group) > 0:
             # Add caption to the first media
-            if post_info.get('description'):
-                media_group[0].caption = post_info['description']
+            if caption:
+                media_group[0].caption = caption
+                media_group[0].parse_mode = "Markdown"
 
             bot.send_media_group(
                 chat_id=chat_id,
