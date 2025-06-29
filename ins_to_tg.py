@@ -57,7 +57,7 @@ def get_instagram_info(post_url: str) -> Optional[Dict]:
                     content_description = json_data.get('data', {}).get('content', {}).get('description', '')
 
                     # Choose text for the link (title, description, or displayName)
-                    link_text = content_title or content_description or user_display_name
+                    link_text = content_title if content_title else user_display_name
 
                     # Get all media (photos/videos)
                     media = json_data.get('data', {}).get('content', {}).get('media', [])
@@ -77,7 +77,7 @@ def get_instagram_info(post_url: str) -> Optional[Dict]:
                         return {
                             'media': media_urls,
                             'link_text': link_text,
-                            'description': content_description
+                            'description': content_description if content_description else '.'
                         }
         return None
     except Exception as e:
@@ -133,17 +133,16 @@ def process_instagram_post(message, post_url: str):
             downloaded_files.append(media_item)
 
         # Upload to uguu.se and collect links
-        media_group = []
+        uploaded_links = []
         for media_item in downloaded_files:
             direct_link = upload_to_uguu(media_item['filename'])
             if not direct_link.startswith('http'):
                 bot.reply_to(message, f"Upload error on uguu.se: {direct_link}", disable_notification=True)
                 return
-
-            if media_item['type'] == 'photo':
-                media_group.append(telebot.types.InputMediaPhoto(direct_link))
-            else:  # video
-                media_group.append(telebot.types.InputMediaVideo(direct_link))
+            uploaded_links.append({
+                'url': direct_link,
+                'type': media_item['type']
+            })
 
         # Delete temporary files
         for media_item in downloaded_files:
@@ -153,14 +152,33 @@ def process_instagram_post(message, post_url: str):
         caption = ""
         if post_info.get('description'):
             first_line = post_info['description'].split('\n')[0]
-            caption = f"{first_line}\n\n[Fixedup]({post_url})"
+            caption = f"{first_line}\n\n[Source]({post_url})"
 
-        # Send media group with reply
-        if len(media_group) > 0:
-            # Add caption to the first media
-            if caption:
-                media_group[0].caption = caption
-                media_group[0].parse_mode = "Markdown"
+        # If only one media, send as message with link
+        if len(uploaded_links) == 1:
+            media_item = uploaded_links[0]
+            caption = caption.replace('\n\n', f"\n\n[{post_info.get('link_text')}]({media_item['url']}) | ")
+            
+            bot.send_message(
+                chat_id=chat_id,
+                text=caption,
+                reply_to_message_id=message.message_id,
+                disable_web_page_preview=False,
+                parse_mode="Markdown"
+            )
+        else:
+            # If multiple media, send as media group
+            media_group = []
+            for idx, media_item in enumerate(uploaded_links):
+                if media_item['type'] == 'photo':
+                    media_group.append(telebot.types.InputMediaPhoto(media_item['url']))
+                else:  # video
+                    media_group.append(telebot.types.InputMediaVideo(media_item['url']))
+
+                # Add caption to the first media only
+                if idx == 0 and caption:
+                    media_group[0].caption = caption
+                    media_group[0].parse_mode = "Markdown"
 
             bot.send_media_group(
                 chat_id=chat_id,
@@ -168,12 +186,12 @@ def process_instagram_post(message, post_url: str):
                 reply_to_message_id=message.message_id  # Reply to the original message
             )
 
-            # Delete original message if configured to do so
-            if DELETE_ORIGINAL_MESSAGE:
-                try:
-                    bot.delete_message(chat_id, message.message_id)
-                except Exception as e:
-                    print(f"Could not delete message: {e}")
+        # Delete original message if configured to do so
+        if DELETE_ORIGINAL_MESSAGE:
+            try:
+                bot.delete_message(chat_id, message.message_id)
+            except Exception as e:
+                print(f"Could not delete message: {e}")
 
     except Exception as e:
         bot.reply_to(message, f"An error occurred: {str(e)}", disable_notification=True)
