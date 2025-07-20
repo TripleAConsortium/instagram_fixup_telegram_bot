@@ -147,6 +147,23 @@ def upload_to_tmpfiles(filename: str) -> str:
     except Exception as e:
         return str(e)
 
+def send_fallback(bot, message, post_url: str):
+    # Sort of fallback.
+    endpoint = 'g.ddinstagram.com'
+    ddinstagram_url = post_url.replace('instagram.com', endpoint).replace('www.' + endpoint, endpoint)
+    dummy_url = ''
+    if UPLOAD_SERVICE == 'tmpfiles':
+        dummy_url = 'tmpfiles.org'
+    else:
+        dummy_url = 'uguu.se'
+    instant_reply = bot.send_message(
+        chat_id=message.chat.id,
+        text=f"[Fallback]({ddinstagram_url}) | [Dummy url]({dummy_url})",
+        reply_to_message_id=message.message_id,
+        parse_mode="Markdown",
+        disable_web_page_preview=False
+    )
+
 def process_instagram_post(bot, message, post_url: str):
     try:
         chat_id = message.chat.id
@@ -158,6 +175,7 @@ def process_instagram_post(bot, message, post_url: str):
         post_info = get_instagram_info(post_url)
         if not post_info or isinstance(post_info, str):
             bot.set_message_reaction(chat_id, message.id, reaction=[telebot.types.ReactionTypeEmoji("💔")])
+            send_fallback(bot, message, post_url)
             return
 
         # Download all media
@@ -166,23 +184,7 @@ def process_instagram_post(bot, message, post_url: str):
             download_result = download_media(media_item['url'], media_item['filename'])
             if isinstance(download_result, str) or not download_result:
                 error_msg = f"Failed to download media: {download_result if isinstance(download_result, str) else 'unknown error'}"
-
-                # Sort of fallback.
-                endpoint = 'g.ddinstagram.com'
-                ddinstagram_url = post_url.replace('instagram.com', endpoint).replace('www.' + endpoint, endpoint)
-                dummy_url = ''
-                if UPLOAD_SERVICE == 'tmpfiles':
-                    dummy_url = 'tmpfiles.org'
-                else:
-                    dummy_url = 'uguu.se'
-                instant_reply = bot.send_message(
-                    chat_id=chat_id,
-                    text=f"[Fallback]({ddinstagram_url}) | [Dummy url]({dummy_url})",
-                    reply_to_message_id=message.message_id,
-                    parse_mode="Markdown",
-                    disable_web_page_preview=False
-                )
-
+                send_fallback(bot, message, post_url)
                 return
             downloaded_files.append(media_item)
 
