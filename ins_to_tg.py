@@ -22,6 +22,48 @@ def setup(bot):
         post_url = message.text
         process_instagram_post(bot, message, post_url)
 
+def process_json(json_data, post_url: str):
+    if json_data.get('success', False):
+        user_display_name = json_data.get('data', {}).get('user', {}).get('displayName', '')
+        content_title = json_data.get('data', {}).get('content', {}).get('title', '')
+        content_description = json_data.get('data', {}).get('content', {}).get('description', '')
+
+        link_text = content_title if content_title else user_display_name
+
+        media = json_data.get('data', {}).get('content', {}).get('media', [])
+        media_urls = []
+
+        for item in media:
+            if item.get('type') in ['photo', 'video']:
+                media_url = item.get('source', {}).get('url')
+                if media_url:
+                    media_urls.append({
+                        'url': media_url,
+                        'type': item['type'],
+                        'filename': f"{os.path.basename(urlparse(post_url).path)}_{len(media_urls)}.{'mp4' if item['type'] == 'video' else 'jpg'}"
+                    })
+
+
+        return {
+            'media': media_urls,
+            'link_text': link_text,
+            'description': content_description if content_description else '.'
+        }
+    return None
+
+def parse_response_ver2(response, post_url: str):
+    if response.startswith('2:'):
+        parts = response.split(',http')
+        if len(parts) > 1:
+            second_element = parts[1].strip()
+            sub_parts = second_element.split(':{"success"')
+            mp4_url = 'http' + sub_parts[0]
+            json_string = ('{"success"' + sub_parts[1]).replace('$2', mp4_url);
+            result = process_json(json.loads(json_string), post_url)
+
+            return result
+    return None
+
 def get_instagram_info(post_url: str) -> Optional[Dict]:
     headers = {
         'Content-Type': 'text/plain;charset=UTF-8',
@@ -50,37 +92,12 @@ def get_instagram_info(post_url: str) -> Optional[Dict]:
         parts = response_text.split('\n')
         if len(parts) >= 2:
             data_part = parts[1]
+            print(data_part)
+            if data_part.startswith('2:'):
+                return parse_response_ver2(data_part, post_url)
             if data_part.startswith('1:'):
                 json_data = json.loads(data_part[2:])
-                if json_data.get('success', False):
-                    # Extract user and content information
-                    user_display_name = json_data.get('data', {}).get('user', {}).get('displayName', '')
-                    content_title = json_data.get('data', {}).get('content', {}).get('title', '')
-                    content_description = json_data.get('data', {}).get('content', {}).get('description', '')
-
-                    # Choose text for the link (title, description, or displayName)
-                    link_text = content_title if content_title else user_display_name
-
-                    # Get all media (photos/videos)
-                    media = json_data.get('data', {}).get('content', {}).get('media', [])
-                    media_urls = []
-
-                    for item in media:
-                        if item.get('type') in ['photo', 'video']:
-                            media_url = item.get('source', {}).get('url')
-                            if media_url:
-                                media_urls.append({
-                                    'url': media_url,
-                                    'type': item['type'],
-                                    'filename': f"{os.path.basename(urlparse(post_url).path)}_{len(media_urls)}.{'mp4' if item['type'] == 'video' else 'jpg'}"
-                                })
-
-                    if media_urls:
-                        return {
-                            'media': media_urls,
-                            'link_text': link_text,
-                            'description': content_description if content_description else '.'
-                        }
+                return process_json(json_data, post_url)
         return None
     except Exception as e:
         return str(e)
