@@ -8,17 +8,16 @@ import json
 from dotenv import load_dotenv
 from typing import List, Dict, Optional, Union
 
-# Load configuration from .env file
-load_dotenv()
-
 # Configuration
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 INSTAGRAM_API_URL = 'https://instagram.embedez.com/'
 UGUU_API_URL = 'https://uguu.se/upload'
 DELETE_ORIGINAL_MESSAGE = os.getenv('DELETE_ORIGINAL_MESSAGE', 'false').lower() == 'true'
 
-# Initialize the bot
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+def setup(bot):
+    @bot.message_handler(regexp=r'https?://(www\.)?instagram\.com/(reel|p)/')
+    def handle_instagram_post(message):
+        post_url = message.text
+        process_instagram_post(bot, message, post_url)
 
 def get_instagram_info(post_url: str) -> Optional[Dict]:
     headers = {
@@ -109,7 +108,7 @@ def upload_to_uguu(filename: str) -> str:
     except Exception as e:
         return str(e)
 
-def process_instagram_post(message, post_url: str):
+def process_instagram_post(bot, message, post_url: str):
     try:
         chat_id = message.chat.id
 
@@ -195,17 +194,3 @@ def process_instagram_post(message, post_url: str):
 
     except Exception as e:
         bot.reply_to(message, f"An error occurred: {str(e)}", disable_notification=True)
-
-@bot.message_handler(regexp=r'https?://(www\.)?instagram\.com/(reel|p)/')
-def handle_instagram_post(message):
-    post_url = message.text
-    process_instagram_post(message, post_url)
-
-if __name__ == '__main__':
-    if not TELEGRAM_BOT_TOKEN:
-        print("Error: TELEGRAM_BOT_TOKEN not found in .env file")
-        exit(1)
-
-    print("Bot running...")
-    print(f"DELETE_ORIGINAL_MESSAGE is set to: {DELETE_ORIGINAL_MESSAGE}")
-    bot.infinity_polling()
