@@ -166,7 +166,23 @@ def process_instagram_post(bot, message, post_url: str):
             download_result = download_media(media_item['url'], media_item['filename'])
             if isinstance(download_result, str) or not download_result:
                 error_msg = f"Failed to download media: {download_result if isinstance(download_result, str) else 'unknown error'}"
-                bot.reply_to(message, error_msg, disable_notification=True)
+
+                # Sort of fallback.
+                endpoint = 'g.ddinstagram.com'
+                ddinstagram_url = post_url.replace('instagram.com', endpoint).replace('www.' + endpoint, endpoint)
+                dummy_url = ''
+                if UPLOAD_SERVICE == 'tmpfiles':
+                    dummy_url = 'tmpfiles.org'
+                else:
+                    dummy_url = 'uguu.se'
+                instant_reply = bot.send_message(
+                    chat_id=chat_id,
+                    text=f"[Fallback]({ddinstagram_url}) | [Dummy url]({dummy_url})",
+                    reply_to_message_id=message.message_id,
+                    parse_mode="Markdown",
+                    disable_web_page_preview=False
+                )
+
                 return
             downloaded_files.append(media_item)
 
