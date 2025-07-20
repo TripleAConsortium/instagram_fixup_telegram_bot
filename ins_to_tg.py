@@ -11,6 +11,9 @@ from typing import List, Dict, Optional, Union
 # Configuration
 INSTAGRAM_API_URL = 'https://instagram.embedez.com/'
 UGUU_API_URL = 'https://uguu.se/upload'
+TMPFILES_API_URL = 'https://tmpfiles.org/api/v1/upload'
+# Choose upload service: 'uguu' or 'tmpfiles'
+UPLOAD_SERVICE = os.getenv('UPLOAD_SERVICE', 'uguu').lower()
 DELETE_ORIGINAL_MESSAGE = os.getenv('DELETE_ORIGINAL_MESSAGE', 'false').lower() == 'true'
 
 def setup(bot):
@@ -94,6 +97,12 @@ def download_media(media_url: str, filename: str) -> Union[bool, str]:
     except Exception as e:
         return str(e)
 
+def upload_to_service(filename: str) -> str:
+    if UPLOAD_SERVICE == 'tmpfiles':
+        return upload_to_tmpfiles(filename)
+    else:
+        return upload_to_uguu(filename)
+
 def upload_to_uguu(filename: str) -> str:
     try:
         with open(filename, 'rb') as f:
@@ -104,6 +113,19 @@ def upload_to_uguu(filename: str) -> str:
             if json_response.get('success', False) and json_response.get('files'):
                 if len(json_response['files']) > 0:
                     return json_response['files'][0].get('url', '')
+            return ''
+    except Exception as e:
+        return str(e)
+
+def upload_to_tmpfiles(filename: str) -> str:
+    try:
+        with open(filename, 'rb') as f:
+            response = requests.post(TMPFILES_API_URL, files={'file': f})
+            response.raise_for_status()
+
+            json_response = response.json()
+            if json_response.get('status') == 'success' and json_response.get('data'):
+                return json_response['data'].get('url', '').replace('tmpfiles.org/', 'tmpfiles.org/dl/')
             return ''
     except Exception as e:
         return str(e)
@@ -131,12 +153,12 @@ def process_instagram_post(bot, message, post_url: str):
                 return
             downloaded_files.append(media_item)
 
-        # Upload to uguu.se and collect links
+        # Upload to selected service and collect links
         uploaded_links = []
         for media_item in downloaded_files:
-            direct_link = upload_to_uguu(media_item['filename'])
+            direct_link = upload_to_service(media_item['filename'])
             if not direct_link.startswith('http'):
-                bot.reply_to(message, f"Upload error on uguu.se: {direct_link}", disable_notification=True)
+                bot.reply_to(message, f"Upload error on {UPLOAD_SERVICE}: {direct_link}", disable_notification=True)
                 return
             uploaded_links.append({
                 'url': direct_link,
