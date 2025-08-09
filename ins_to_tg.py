@@ -149,7 +149,11 @@ def upload_to_tmpfiles(filename: str) -> str:
 
 def send_fallback(bot, message, post_url: str):
     # Sort of fallback.
-    endpoint = 'g.ddinstagram.com'
+    origin_post_url = post_url
+    post_url = post_url.split('/?')[0]
+    endpoint = 'ddinstagram.com'
+    e2 = 'g.ddinstagram.com'
+    e3 = 'd.ddinstagram.com'
     ddinstagram_url = post_url.replace('instagram.com', endpoint).replace('www.' + endpoint, endpoint)
     dummy_url = ''
     if UPLOAD_SERVICE == 'tmpfiles':
@@ -158,11 +162,17 @@ def send_fallback(bot, message, post_url: str):
         dummy_url = 'uguu.se'
     instant_reply = bot.send_message(
         chat_id=message.chat.id,
-        text=f"[Fallback]({ddinstagram_url}) | [Dummy url]({dummy_url})",
+        text=f"[.]({ddinstagram_url.replace(endpoint, e2)})[.]({dummy_url}) [S]({origin_post_url})",
         reply_to_message_id=message.message_id,
         parse_mode="Markdown",
         disable_web_page_preview=False
     )
+
+    if DELETE_ORIGINAL_MESSAGE:
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except Exception as e:
+            print(f"Could not delete message: {e}")
 
 def process_instagram_post(bot, message, post_url: str):
     try:
