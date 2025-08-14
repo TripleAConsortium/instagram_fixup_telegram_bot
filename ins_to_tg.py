@@ -162,7 +162,7 @@ def send_fallback(bot, message, post_url: str):
         dummy_url = 'uguu.se'
     instant_reply = bot.send_message(
         chat_id=message.chat.id,
-        text=f"[.]({ddinstagram_url.replace(endpoint, e2)})[.]({dummy_url}) [S]({origin_post_url})",
+        text=f"[Reel]({origin_post_url})[.]({ddinstagram_url.replace(endpoint, e2)})[.]({dummy_url})",
         reply_to_message_id=message.message_id,
         parse_mode="Markdown",
         disable_web_page_preview=False
