@@ -15,6 +15,7 @@ TMPFILES_API_URL = 'https://tmpfiles.org/api/v1/upload'
 # Choose upload service: 'uguu' or 'tmpfiles'
 UPLOAD_SERVICE = os.getenv('UPLOAD_SERVICE', 'uguu').lower()
 DELETE_ORIGINAL_MESSAGE = os.getenv('DELETE_ORIGINAL_MESSAGE', 'false').lower() == 'true'
+USE_DACOGRAM = os.getenv('USE_DACOGRAM', 'false').lower() == 'true'
 
 def setup(bot):
     @bot.message_handler(regexp=r'https?://(www\.)?instagram\.com/(reel|p)/')
@@ -151,9 +152,14 @@ def send_fallback(bot, message, post_url: str):
     # Sort of fallback.
     origin_post_url = post_url
     post_url = post_url.split('/?')[0]
-    endpoint = 'ddinstagram.com'
-    e2 = 'g.ddinstagram.com'
-    e3 = 'd.ddinstagram.com'
+    
+    if USE_DACOGRAM:
+        endpoint = 'www.dacogram.com'
+        e2 = 'www.dacogram.com'
+    else:
+        endpoint = 'ddinstagram.com'
+        e2 = 'g.ddinstagram.com'
+    
     ddinstagram_url = post_url.replace('instagram.com', endpoint).replace('www.' + endpoint, endpoint)
     dummy_url = ''
     if UPLOAD_SERVICE == 'tmpfiles':
