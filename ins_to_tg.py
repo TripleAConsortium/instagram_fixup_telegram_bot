@@ -22,6 +22,11 @@ def setup(bot):
     def handle_instagram_post(message):
         post_url = message.text
         process_instagram_post(bot, message, post_url)
+    
+    @bot.message_handler(regexp=r'https?://(www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)/')
+    def handle_tiktok_post(message):
+        post_url = message.text
+        process_tiktok_post(bot, message, post_url)
 
 def process_json(json_data, post_url: str):
     if json_data.get('success', False):
@@ -265,5 +270,34 @@ def process_instagram_post(bot, message, post_url: str):
             except Exception as e:
                 print(f"Could not delete message: {e}")
 
+    except Exception as e:
+        bot.reply_to(message, f"An error occurred: {str(e)}", disable_notification=True)
+
+def process_tiktok_post(bot, message, post_url: str):
+    try:
+        origin_post_url = post_url
+        # Replace all TikTok domains with d.tnktok.com
+        fixed_url = post_url.replace('vm.tiktok.com', 'd.tnktok.com').replace('vt.tiktok.com', 'd.tnktok.com').replace('tiktok.com', 'd.tnktok.com')
+        
+        dummy_url = ''
+        if UPLOAD_SERVICE == 'tmpfiles':
+            dummy_url = 'tmpfiles.org'
+        else:
+            dummy_url = 'uguu.se'
+            
+        bot.send_message(
+            chat_id=message.chat.id,
+            text=f"[.]({fixed_url})[.]({dummy_url})[TikTok]({origin_post_url})",
+            reply_to_message_id=message.message_id,
+            parse_mode="Markdown",
+            disable_web_page_preview=False
+        )
+        
+        if DELETE_ORIGINAL_MESSAGE:
+            try:
+                bot.delete_message(message.chat.id, message.message_id)
+            except Exception as e:
+                print(f"Could not delete message: {e}")
+                
     except Exception as e:
         bot.reply_to(message, f"An error occurred: {str(e)}", disable_notification=True)
