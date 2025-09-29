@@ -23,6 +23,16 @@ def setup(bot):
         post_url = message.text
         process_instagram_post(bot, message, post_url)
     
+    @bot.message_handler(regexp=r'https?://(www\.)?instagram\.com/share/reel/')
+    def handle_instagram_share_reel(message):
+        post_url = message.text
+        # Convert share/reel URL to dacogram format
+        if USE_DACOGRAM:
+            dacogram_url = post_url.replace('instagram.com', 'dacogram.com')
+            send_dacogram_fallback(bot, message, post_url, dacogram_url)
+        else:
+            process_instagram_post(bot, message, post_url)
+    
     @bot.message_handler(regexp=r'https?://(www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)/')
     def handle_tiktok_post(message):
         post_url = message.text
@@ -174,6 +184,27 @@ def send_fallback(bot, message, post_url: str):
     instant_reply = bot.send_message(
         chat_id=message.chat.id,
         text=f"[Reel]({origin_post_url})[.]({ddinstagram_url.replace(endpoint, e2)})[.]({dummy_url})",
+        reply_to_message_id=message.message_id,
+        parse_mode="Markdown",
+        disable_web_page_preview=False
+    )
+
+    if DELETE_ORIGINAL_MESSAGE:
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except Exception as e:
+            print(f"Could not delete message: {e}")
+
+def send_dacogram_fallback(bot, message, origin_post_url: str, dacogram_url: str):
+    dummy_url = ''
+    if UPLOAD_SERVICE == 'tmpfiles':
+        dummy_url = 'tmpfiles.org'
+    else:
+        dummy_url = 'uguu.se'
+    
+    bot.send_message(
+        chat_id=message.chat.id,
+        text=f"[.]({dacogram_url})[.]({dummy_url})[Reel]({origin_post_url})",
         reply_to_message_id=message.message_id,
         parse_mode="Markdown",
         disable_web_page_preview=False
