@@ -34,40 +34,16 @@ def resolve_via_igram(post_url: str) -> list[dict]:
     """
     try:
         from igram_resolver.igram_resolver import resolve
-        raw_urls = resolve(post_url)
+        urls = resolve(post_url)
     except Exception as e:
         print(f"igram resolver error: {e}")
         return []
 
-    # Deep extract URLs from potentially nested igram response.
     items = []
-    def extract(obj):
-        if isinstance(obj, str) and obj.startswith('http') and 'igram.world' in obj:
-            # Guess type from URL.
-            is_video = '.mp4' in obj or 'video' in obj
-            items.append({"url": obj, "type": "video" if is_video else "photo"})
-        elif isinstance(obj, dict):
-            url = obj.get('url', '')
-            ext = obj.get('ext', obj.get('type', ''))
-            if isinstance(url, str) and url.startswith('http'):
-                is_video = ext in ('mp4', 'video') or '.mp4' in url
-                items.append({"url": url, "type": "video" if is_video else "photo"})
-            for v in obj.values():
-                if isinstance(v, (list, dict)):
-                    extract(v)
-        elif isinstance(obj, list):
-            for item in obj:
-                extract(item)
-    extract(raw_urls)
-
-    # Deduplicate by URL.
-    seen = set()
-    unique = []
-    for item in items:
-        if item['url'] not in seen:
-            seen.add(item['url'])
-            unique.append(item)
-    return unique
+    for url in urls:
+        is_video = '.mp4' in url or 'video' in url
+        items.append({"url": url, "type": "video" if is_video else "photo"})
+    return items
 
 
 def download_file(url: str, suffix: str = ".mp4") -> str | None:
