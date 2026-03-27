@@ -155,12 +155,12 @@ def send_fallback(bot, message, post_url: str):
 
 
 def check_dacogram(post_url: str) -> bool:
-    """Check if dacogram returns 200 OK for this URL (meaning it can embed it)."""
+    """Check if dacogram can embed this reel as video (og:video present)."""
     try:
         clean_url = post_url.split('/?')[0]
         dacogram_url = clean_url.replace('instagram.com', 'www.dacogram.com').replace('www.www.', 'www.')
-        resp = requests.head(dacogram_url, timeout=5, allow_redirects=False)
-        return resp.status_code == 200
+        resp = requests.get(dacogram_url, timeout=8, allow_redirects=True)
+        return 'og:video' in resp.text
     except Exception:
         return False
 
