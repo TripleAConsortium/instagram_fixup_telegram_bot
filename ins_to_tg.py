@@ -87,6 +87,46 @@ def compress_video(path: str) -> str:
     return path
 
 
+def get_video_info(path: str) -> dict:
+    """Get video duration, width, height via ffprobe."""
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_format", "-show_streams", path],
+            capture_output=True, text=True, timeout=30
+        )
+        data = __import__('json').loads(probe.stdout)
+        duration = int(float(data.get("format", {}).get("duration", 0)))
+        width = 0
+        height = 0
+        for s in data.get("streams", []):
+            if s.get("codec_type") == "video":
+                width = s.get("width", 0)
+                height = s.get("height", 0)
+                break
+        return {"duration": duration, "width": width, "height": height}
+    except Exception:
+        return {"duration": 0, "width": 0, "height": 0}
+
+
+def generate_thumbnail(path: str) -> str | None:
+    """Generate a thumbnail from the video. Returns path or None."""
+    thumb_path = path + ".thumb.jpg"
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", path, "-ss", "00:00:01", "-vframes", "1",
+             "-vf", "scale=320:-1", thumb_path],
+            capture_output=True, timeout=30
+        )
+        if os.path.exists(thumb_path) and os.path.getsize(thumb_path) > 0:
+            return thumb_path
+    except Exception:
+        pass
+    if os.path.exists(thumb_path):
+        os.unlink(thumb_path)
+    return None
+
+
 def send_fallback(bot, message, post_url: str):
     """Fallback: send text links when media download fails."""
     origin_post_url = post_url
@@ -133,8 +173,11 @@ def process_instagram_post(bot, message, post_url: str):
                 send_fallback(bot, message, post_url)
                 return
             path = compress_video(path)
+            info = get_video_info(path)
+            thumb_path = generate_thumbnail(path)
             try:
                 caption = f"[Reel]({post_url}){HASHTAG}"
+                thumb_file = open(thumb_path, 'rb') if thumb_path else None
                 with open(path, 'rb') as f:
                     bot.send_video(
                         chat_id=chat_id,
@@ -142,9 +185,18 @@ def process_instagram_post(bot, message, post_url: str):
                         caption=caption,
                         parse_mode="Markdown",
                         reply_to_message_id=message.message_id,
+                        duration=info["duration"] or None,
+                        width=info["width"] or None,
+                        height=info["height"] or None,
+                        thumbnail=thumb_file,
+                        supports_streaming=True,
                     )
+                if thumb_file:
+                    thumb_file.close()
             finally:
                 os.unlink(path)
+                if thumb_path and os.path.exists(thumb_path):
+                    os.unlink(thumb_path)
         else:
             # Multiple media — send as media group.
             paths = []
