@@ -2,6 +2,7 @@
 
 import os
 import sys
+import subprocess
 import requests
 import telebot
 import tempfile
@@ -13,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 DELETE_ORIGINAL_MESSAGE = os.getenv('DELETE_ORIGINAL_MESSAGE', 'false').lower() == 'true'
 USE_DACOGRAM = os.getenv('USE_DACOGRAM', 'false').lower() == 'true'
 HASHTAG = "\n\n#instagram"
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 
 def setup(bot):
     @bot.message_handler(regexp=r'https?://(www\.)?instagram\.com/(reel|p|share/reel)/')
@@ -47,6 +49,42 @@ def download_file(url: str, suffix: str = ".mp4") -> str | None:
     except Exception as e:
         print(f"Download error: {e}")
         return None
+
+
+def compress_video(path: str) -> str:
+    """Compress video to fit under MAX_FILE_SIZE. Returns path (same or new)."""
+    size = os.path.getsize(path)
+    if size <= MAX_FILE_SIZE:
+        return path
+
+    # Calculate target bitrate: (target_size_bits * 0.95) / duration.
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path],
+            capture_output=True, text=True, timeout=30
+        )
+        duration = float(__import__('json').loads(probe.stdout)["format"]["duration"])
+    except Exception:
+        duration = 60.0
+
+    target_bitrate = int((MAX_FILE_SIZE * 8 * 0.90) / duration)
+
+    out_path = path + ".compressed.mp4"
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", path, "-c:v", "libx264", "-b:v", str(target_bitrate),
+             "-maxrate", str(target_bitrate), "-bufsize", str(target_bitrate // 2),
+             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out_path],
+            capture_output=True, timeout=300
+        )
+        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+            os.unlink(path)
+            return out_path
+    except Exception as e:
+        print(f"Compression error: {e}")
+        if os.path.exists(out_path):
+            os.unlink(out_path)
+    return path
 
 
 def send_fallback(bot, message, post_url: str):
@@ -94,6 +132,7 @@ def process_instagram_post(bot, message, post_url: str):
             if not path:
                 send_fallback(bot, message, post_url)
                 return
+            path = compress_video(path)
             try:
                 caption = f"[Reel]({post_url}){HASHTAG}"
                 with open(path, 'rb') as f:
@@ -114,6 +153,7 @@ def process_instagram_post(bot, message, post_url: str):
                 path = download_file(url)
                 if not path:
                     continue
+                path = compress_video(path)
                 paths.append(path)
                 item = telebot.types.InputMediaVideo(open(path, 'rb'))
                 if i == 0:
