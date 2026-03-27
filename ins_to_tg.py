@@ -154,12 +154,49 @@ def send_fallback(bot, message, post_url: str):
             print(f"Could not delete message: {e}")
 
 
+def check_dacogram(post_url: str) -> bool:
+    """Check if dacogram returns 200 OK for this URL (meaning it can embed it)."""
+    try:
+        clean_url = post_url.split('/?')[0]
+        dacogram_url = clean_url.replace('instagram.com', 'www.dacogram.com').replace('www.www.', 'www.')
+        resp = requests.head(dacogram_url, timeout=5, allow_redirects=False)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def send_dacogram_embed(bot, message, post_url: str):
+    """Send message with dacogram embed link."""
+    clean_url = post_url.split('/?')[0]
+    dacogram_url = clean_url.replace('instagram.com', 'www.dacogram.com').replace('www.www.', 'www.')
+
+    bot.send_message(
+        chat_id=message.chat.id,
+        text=f"[Reel]({post_url})[.]({dacogram_url}){HASHTAG}",
+        reply_to_message_id=message.message_id,
+        parse_mode="Markdown",
+        disable_web_page_preview=False
+    )
+
+    if DELETE_ORIGINAL_MESSAGE:
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except Exception as e:
+            print(f"Could not delete message: {e}")
+
+
 def process_instagram_post(bot, message, post_url: str):
     try:
         chat_id = message.chat.id
+
+        # Try dacogram first (fast, lightweight).
+        if check_dacogram(post_url):
+            send_dacogram_embed(bot, message, post_url)
+            return
+
+        # Dacogram unavailable — download via igram.
         bot.send_chat_action(chat_id, 'upload_video')
 
-        # Resolve via igram.
         media_urls = resolve_via_igram(post_url)
         if not media_urls:
             bot.set_message_reaction(chat_id, message.id, reaction=[telebot.types.ReactionTypeEmoji("💔")])
