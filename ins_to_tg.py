@@ -2,11 +2,13 @@
 
 import math
 import os
+import re
 import sys
 import subprocess
 import requests
 import telebot
 import tempfile
+from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv
 from PIL import Image
 
@@ -247,6 +249,20 @@ def process_instagram_post(bot, message, post_url: str):
         media_items = resolve_via_igram(post_url)
         if not media_items:
             bot.set_message_reaction(chat_id, message.id, reaction=[telebot.types.ReactionTypeEmoji("💔")])
+
+        # If img_index is specified, pick only that item (1-based).
+        parsed = urlparse(post_url)
+        params = parse_qs(parsed.query)
+        img_index = params.get('img_index', [None])[0]
+        if img_index and media_items:
+            try:
+                idx = int(img_index) - 1
+                if 0 <= idx < len(media_items):
+                    media_items = [media_items[idx]]
+            except ValueError:
+                pass
+
+        if not media_items:
             send_fallback(bot, message, post_url)
             return
 
